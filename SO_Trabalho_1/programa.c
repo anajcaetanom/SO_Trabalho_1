@@ -15,18 +15,19 @@
 #define LINHA 10000
 #define COLUNA 10000
 
-#define MACRO_LINHA 100
-#define MACRO_COLUNA 100
+#define MACRO_LINHA 1000
+#define MACRO_COLUNA 1000
 
 #define MATRIZ_OCUPACAO_DIMENSAO (LINHA / MACRO_LINHA)
-
 #define TOTAL_MACROBLOCOS ((LINHA * COLUNA) / (MACRO_LINHA * MACRO_COLUNA))
+
+
 
 /* variáveis globais */
 pthread_mutex_t mutex, mutex2; // variáveis mutex.
 int qtd_primos = 0; // quantidade de primos.
 int** matriz; // matriz de inteiros aleatórios.
-int matrizOcupacao[MATRIZ_OCUPACAO_DIMENSAO][MATRIZ_OCUPACAO_DIMENSAO]; // matriz que armazena a ocupação de cada macrobloco.
+int blocoOcupacao[MATRIZ_OCUPACAO_DIMENSAO][MATRIZ_OCUPACAO_DIMENSAO]; // matriz que armazena a ocupação de cada macrobloco.
 
 
 /*
@@ -75,6 +76,12 @@ int** criarMatriz(int linha, int coluna) {
     return matriz;
 }
 
+/*
+* Verifica se um número é primo.
+* @param n: número inteiro para a verificação.
+* @return 0 (falso) se o número não for primo. 
+* @return 1 (verdadeiro) caso ele seja primo.
+*/
 int ehPrimo(int n) {
     double raizQuadrada = sqrt(n);
     int contador = 2;
@@ -91,6 +98,9 @@ int ehPrimo(int n) {
     return 1;
 }
 
+/*
+* Faz a busca de números primos de modo serial.
+*/
 void buscaSerial() {
 
     for (int i = 0; i < LINHA; i++) {
@@ -102,51 +112,31 @@ void buscaSerial() {
 
 }
 
+
 /*
-void printMatrizMacrobloco() {
-
-    for (int bi = 0; bi < MACRO_LINHA; bi++) {
-        for (int bj = 0; bj < MACRO_COLUNA; bj++) {
-            printf("Bloco (%d, %d):\n", bi, bj);
-            for (int k = 0; k < MACRO_LINHA; k++) {
-                for (int l = 0; l < MACRO_COLUNA; l++) {
-                    int x = bi * MACRO_LINHA + k;
-                    int y = bj * MACRO_COLUNA + l;
-                    if (x < LINHA && y < COLUNA) {
-                        printf("%d ", matriz[x][y]);
-                    }
-                    else {
-                        printf("-1 ");
-                    }
-                }
-                printf("\n");
-            }
-            printf("\n");
-        }
-    }
-
-}
+* Cada thread irá utilizar essa função para fazer a busca de números primos de modo paralelo.
+* @param arg: parâmetro que aponta para void de acordo com a especificação do pthreads.
+* @return: NULL
 */
-
 void* buscaParalela(void* arg) {
-    int row_start, row_end, col_start, col_end;
+    int linha_start, linha_end, col_start, col_end;
     
     for (int i = 0; i < MATRIZ_OCUPACAO_DIMENSAO; i++) {
         for (int j = 0; j < MATRIZ_OCUPACAO_DIMENSAO; j++) {
 
             pthread_mutex_lock(&mutex);
 
-            if (matrizOcupacao[i][j] == 0) {
-                matrizOcupacao[i][j] = 1;
+            if (blocoOcupacao[i][j] == 0) {
+                blocoOcupacao[i][j] = 1;
 
                 pthread_mutex_unlock(&mutex);
 
-                row_start = i * MACRO_LINHA;
-                row_end = (i + 1) * MACRO_LINHA;
+                linha_start = i * MACRO_LINHA;
+                linha_end = (i + 1) * MACRO_LINHA;
                 col_start = j * MACRO_COLUNA;
                 col_end = (j + 1) * MACRO_COLUNA;
 
-                for (int k = row_start; k < row_end; k++) {
+                for (int k = linha_start; k < linha_end; k++) {
                     for (int l = col_start; l < col_end; l++) {
                         
                         if (ehPrimo(matriz[k][l])) {
@@ -167,7 +157,23 @@ void* buscaParalela(void* arg) {
         }
     }
 
-    pthread_exit(NULL);
+    pthread_exit(0);
+
+    return NULL;
+}
+
+/*
+* Desalocação da matriz.
+*/
+void liberarMatriz() {
+    if (matriz != NULL) {
+        for (int i = 0; i < LINHA; i++) {
+            if (matriz[i] != NULL) {
+                free(matriz[i]);
+            }
+        }
+        free(matriz);
+    }
 }
 
 
@@ -204,7 +210,7 @@ int main(int argc, char* argv[]) {
     // matriz dos macroblocos com todas as ocupações livres
     for (int i = 0; i < MACRO_LINHA; i++) {
         for (int j = 0; j < MACRO_COLUNA; j++) 
-            matrizOcupacao[i][j] = 0;
+            blocoOcupacao[i][j] = 0;
     }       
 
     tempo_inicial_paralelo = clock();
@@ -226,8 +232,35 @@ int main(int argc, char* argv[]) {
     pthread_mutex_destroy(&mutex);
     pthread_mutex_destroy(&mutex2);
 
-
-    
+    liberarMatriz();
 
     return 0;
 }
+
+/*z ime todos os macroblocos da matriz de acordo com as definições de ambas.
+*
+/*
+void printMatrizMacrobloco() {
+
+    for (int bi = 0; bi < MACRO_LINHA; bi++) {
+        for (int bj = 0; bj < MACRO_COLUNA; bj++) {
+            printf("Bloco (%d, %d):\n", bi, bj);
+            for (int k = 0; k < MACRO_LINHA; k++) {
+                for (int l = 0; l < MACRO_COLUNA; l++) {
+                    int x = bi * MACRO_LINHA + k;
+                    int y = bj * MACRO_COLUNA + l;
+                    if (x < LINHA && y < COLUNA) {
+                        printf("%d ", matriz[x][y]);
+                    }
+                    else {
+                        printf("-1 ");
+                    }
+                }
+                printf("\n");
+            }
+            printf("\n");
+        }
+    }
+
+}
+*/
