@@ -10,35 +10,31 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define QTD_THREADS_FISICAS 6
-#define QTD_THREADS_LOGICAS 12
+#define QTD_THREADS 6
 
-#define LINHA 1000
-#define COLUNA 1000
+#define LINHA 10000
+#define COLUNA 10000
 
-#define MACRO_LINHA 10
-#define MACRO_COLUNA 10
+#define MACRO_LINHA 100
+#define MACRO_COLUNA 100
 
-#define NUM_BLOCOS_LINHA  (LINHA / MACRO_LINHA)
-#define NUM_BLOCOS_COLUNA  (COLUNA  / MACRO_COLUNA)
+#define MATRIZ_OCUPACAO_DIMENSAO (LINHA / MACRO_LINHA)
 
-typedef struct _macrobloco {
-    int ocupacao;
-} Macrobloco;
-
+#define TOTAL_MACROBLOCOS ((LINHA * COLUNA) / (MACRO_LINHA * MACRO_COLUNA))
 
 /* variáveis globais */
-pthread_mutex_t mutex, mutex2; // declaração da variável mutex.
-int qtd_primos = 0; // contabiliza a quantidade de primos 
-int** matriz; // matriz de inteiros
-Macrobloco* array_macroblocos; // 
-int row_start, row_end;
-int col_start, col_end;
-
-int macrobloco_id = 0;
-int thread = 0;
+pthread_mutex_t mutex, mutex2; // variáveis mutex.
+int qtd_primos = 0; // quantidade de primos.
+int** matriz; // matriz de inteiros aleatórios.
+int matrizOcupacao[MATRIZ_OCUPACAO_DIMENSAO][MATRIZ_OCUPACAO_DIMENSAO]; // matriz que armazena a ocupação de cada macrobloco.
 
 
+/*
+* Aloca e preenche a matriz.
+* @param linha: quantidade de linhas da matriz.
+* @param coluna: quantidade de colunas da matriz.
+* @return matriz bidimensional de inteiros.
+*/
 int** criarMatriz(int linha, int coluna) {
 
     matriz = (int**)calloc(LINHA, sizeof(int*));
@@ -56,15 +52,14 @@ int** criarMatriz(int linha, int coluna) {
         }
     }
 
-    /*
     // preenchimento da matriz
     for (int i = 0; i < LINHA; i++) {
         for (int j = 0; j < COLUNA; j++) {
             matriz[i][j] = rand() % 32000;
         }
     }
-    */
 
+    /*
     // teste
     int count = 1;
     for (int i = 0; i < LINHA; i++) {
@@ -75,7 +70,7 @@ int** criarMatriz(int linha, int coluna) {
         }
         //printf("\n");
     }
-    
+    */
 
     return matriz;
 }
@@ -107,11 +102,11 @@ void buscaSerial() {
 
 }
 
-
+/*
 void printMatrizMacrobloco() {
 
-    for (int bi = 0; bi < NUM_BLOCOS_LINHA; bi++) {
-        for (int bj = 0; bj < NUM_BLOCOS_COLUNA; bj++) {
+    for (int bi = 0; bi < MACRO_LINHA; bi++) {
+        for (int bj = 0; bj < MACRO_COLUNA; bj++) {
             printf("Bloco (%d, %d):\n", bi, bj);
             for (int k = 0; k < MACRO_LINHA; k++) {
                 for (int l = 0; l < MACRO_COLUNA; l++) {
@@ -131,37 +126,48 @@ void printMatrizMacrobloco() {
     }
 
 }
-
+*/
 
 void* buscaParalela(void* arg) {
-    int macrobloco_id = (int)arg;
+    int row_start, row_end, col_start, col_end;
+    
+    for (int i = 0; i < MATRIZ_OCUPACAO_DIMENSAO; i++) {
+        for (int j = 0; j < MATRIZ_OCUPACAO_DIMENSAO; j++) {
 
-    // int qtd_primos_temp = 0; // variável temporária que contabiliza a quantidade de números primos dentro do macrobloco.
+            pthread_mutex_lock(&mutex);
 
-    // verifica se macrobloco tá desocupado.
-    if (array_macroblocos[macrobloco_id].ocupacao == 0) {
-        pthread_mutex_lock(&mutex2);
-        array_macroblocos[macrobloco_id].ocupacao = 1; // marca o macrobloco como ocupado.
-        pthread_mutex_unlock(&mutex2);
+            if (matrizOcupacao[i][j] == 0) {
+                matrizOcupacao[i][j] = 1;
 
-        // percorre o macrobloco.
-        for (int linha = row_start; linha < row_end; linha++) {
-            for (int coluna = col_start; coluna < col_end; coluna++) {
+                pthread_mutex_unlock(&mutex);
 
-                // verifica se o elemento matriz[linha][coluna] é primo.
-                if (ehPrimo(matriz[linha][coluna])) { 
-                    //printf("A thread %d esta no macrobloco %d numero da matriz %d.\n", thread, macrobloco_id, matriz[linha][coluna]);
-                    
-                    pthread_mutex_lock(&mutex);
-                    qtd_primos++;
-                    pthread_mutex_unlock(&mutex);
-                    //printf("Primos: %d\n\n", qtd_primos);
+                row_start = i * MACRO_LINHA;
+                row_end = (i + 1) * MACRO_LINHA;
+                col_start = j * MACRO_COLUNA;
+                col_end = (j + 1) * MACRO_COLUNA;
+
+                for (int k = row_start; k < row_end; k++) {
+                    for (int l = col_start; l < col_end; l++) {
+                        
+                        if (ehPrimo(matriz[k][l])) {
+                            pthread_mutex_lock(&mutex2);
+                            qtd_primos++;
+                            pthread_mutex_unlock(&mutex2);
+                        }
+                        
+                    }
                 }
+            } 
+            
+            else {
+                pthread_mutex_unlock(&mutex);
             }
+
+            
         }
     }
-    
-    return NULL;
+
+    pthread_exit(NULL);
 }
 
 
@@ -175,11 +181,12 @@ int main(int argc, char* argv[]) {
     pthread_mutex_init(&mutex, NULL);
     pthread_mutex_init(&mutex2, NULL);
 
+    clock_t tempo_inicial_serial, tempo_final_serial;
+    clock_t tempo_inicial_paralelo, tempo_final_paralelo;
 
-    /**************** SERIAL ****************/
+    pthread_t array_threads[QTD_THREADS]; // array de threads.
 
-    clock_t tempo_inicial_serial;
-    clock_t tempo_final_serial;
+    /**************** SERIAL ****************/   
 
     tempo_inicial_serial = clock();
     buscaSerial();
@@ -190,61 +197,35 @@ int main(int argc, char* argv[]) {
     printf("Tempo serial: %f\nNumeros primos: %d\n", tempo_execucao_serial, qtd_primos);
     
     
-    /**************** PARALELO ****************/
+    /**************** PARALELO ****************/   
 
-    clock_t tempo_inicial_paralelo;
-    clock_t tempo_final_paralelo;
+    qtd_primos = 0;    
 
-    qtd_primos = 0;   
-    pthread_t array_threads[QTD_THREADS_FISICAS]; // array de threads.
-    int total_macroblocos = (LINHA * COLUNA) / (MACRO_LINHA * MACRO_COLUNA);    
-
-    array_macroblocos = (Macrobloco*)calloc(total_macroblocos, sizeof(Macrobloco));
-
-    if (array_macroblocos == NULL) {
-        printf("Erro ao alocar o array de macroblocos.");
-        EXIT_FAILURE;
-    }    
-
-    // inicialização dos macroblocos desocupados
-    for (int j = 0; j < total_macroblocos; j++) 
-        array_macroblocos[j].ocupacao = 0; 
+    // matriz dos macroblocos com todas as ocupações livres
+    for (int i = 0; i < MACRO_LINHA; i++) {
+        for (int j = 0; j < MACRO_COLUNA; j++) 
+            matrizOcupacao[i][j] = 0;
+    }       
 
     tempo_inicial_paralelo = clock();
 
-    // cálculo das coordenadas do macrobloco.
-    for (int i = 0; i < NUM_BLOCOS_LINHA; i++) {
-        for (int j = 0; j < NUM_BLOCOS_COLUNA; j++) {
+    for (int thread = 0; thread < QTD_THREADS; thread++) {
+        pthread_create(&array_threads[thread], NULL, buscaParalela, NULL);  
+    }
 
-            row_start = i * MACRO_LINHA;
-            row_end = (i + 1) * MACRO_LINHA;
-            col_start = j * MACRO_COLUNA;
-            col_end = (j + 1) * MACRO_COLUNA; 
-            
-
-            // inicialização das threads
-            for (thread = 0; thread < QTD_THREADS_FISICAS; thread++) {
-                pthread_create(&array_threads[thread], NULL, buscaParalela, (void *)macrobloco_id);
-            }
-
-            macrobloco_id++;
-            
-        }
+    for (int thread = 0; thread < QTD_THREADS; thread++) {
+        pthread_join(array_threads[thread], NULL);
     }
 
     tempo_final_paralelo = clock();
 
     double tempo_execucao_multithread =  (double)(tempo_final_paralelo - tempo_inicial_paralelo) / CLOCKS_PER_SEC;
 
-
-    for (int i = 0; i < QTD_THREADS_FISICAS; i++) {
-        pthread_join(array_threads[i], NULL);        
-    }
+    printf("Tempo multithread: %f\nNumeros primos: %d\n", tempo_execucao_multithread, qtd_primos);
 
     pthread_mutex_destroy(&mutex);
     pthread_mutex_destroy(&mutex2);
 
-    printf("Tempo multithread: %f\nNumeros primos: %d\n", tempo_execucao_multithread, qtd_primos);
 
     
 
