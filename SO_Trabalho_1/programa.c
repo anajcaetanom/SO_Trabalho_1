@@ -15,8 +15,8 @@
 #define LINHA 10000
 #define COLUNA 10000
 
-#define MACRO_LINHA 10000
-#define MACRO_COLUNA 10000
+#define MACRO_LINHA 10
+#define MACRO_COLUNA 10
 
 #define MATRIZ_OCUPACAO_DIMENSAO (LINHA / MACRO_LINHA)
 #define TOTAL_MACROBLOCOS ((LINHA * COLUNA) / (MACRO_LINHA * MACRO_COLUNA))
@@ -27,7 +27,7 @@
 pthread_mutex_t mutex, mutex2; // variáveis mutex.
 int qtd_primos = 0; // quantidade de primos.
 int** matriz; // matriz de inteiros aleatórios.
-int blocoOcupacao[MATRIZ_OCUPACAO_DIMENSAO_LINHA][MATRIZ_OCUPACAO_DIMENSAO_COLUNA]; // matriz que armazena a ocupação de cada macrobloco.
+int blocoOcupacao[MATRIZ_OCUPACAO_DIMENSAO][MATRIZ_OCUPACAO_DIMENSAO]; // matriz que armazena a ocupação de cada macrobloco.
 
 
 /*
@@ -120,6 +120,7 @@ void buscaSerial() {
 */
 void* buscaParalela(void* arg) {
     int linha_start, linha_end, col_start, col_end;
+    int var_temp = 0;
     
     for (int i = 0; i < MATRIZ_OCUPACAO_DIMENSAO; i++) {
         for (int j = 0; j < MATRIZ_OCUPACAO_DIMENSAO; j++) {
@@ -139,23 +140,22 @@ void* buscaParalela(void* arg) {
                 for (int k = linha_start; k < linha_end; k++) {
                     for (int l = col_start; l < col_end; l++) {
                         
-                        if (ehPrimo(matriz[k][l])) {
-                            pthread_mutex_lock(&mutex2);
-                            qtd_primos++;
-                            pthread_mutex_unlock(&mutex2);
-                        }
-                        
+                        if (ehPrimo(matriz[k][l])) 
+                            var_temp++;
+                                                
                     }
                 }
             } 
             
             else {
                 pthread_mutex_unlock(&mutex);
-            }
-
-            
+            }            
         }
     }
+
+    pthread_mutex_lock(&mutex2);
+    qtd_primos += var_temp;
+    pthread_mutex_unlock(&mutex2);
 
     pthread_exit(0);
 
